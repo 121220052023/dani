@@ -92,8 +92,12 @@ export default function UsersPage() {
     }
   };
 
+  const roleOrder = { admin: 0, sales: 1, marketing: 2, wholesale: 3, retail: 4 };
+
   const filteredUsers = useMemo(
-    () => users.filter((user) => [user.full_name, user.email, user.role, user.provider].join(" ").toLowerCase().includes(searchQuery.toLowerCase())),
+    () => users
+      .filter((user) => [user.full_name, user.email, user.role, user.provider].join(" ").toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => (roleOrder[a.role] ?? 99) - (roleOrder[b.role] ?? 99)),
     [users, searchQuery],
   );
 
