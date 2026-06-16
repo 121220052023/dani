@@ -26,6 +26,7 @@ export async function saveProduct(product) {
   const payload = {
     ...product,
     tags: tagsValue,
+    discount_percent: product.discount_percent === '' || product.discount_percent == null ? 0 : Number(product.discount_percent),
     slug: product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
   };
 

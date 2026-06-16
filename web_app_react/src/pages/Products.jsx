@@ -139,6 +139,17 @@ export default function ProductsPage() {
     }
   };
 
+  const toggleFlag = async (id, flags) => {
+    try {
+      const { error } = await supabase.from('products').update(flags).eq('id', id);
+      if (error) throw error;
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...flags } : p)));
+      pushToast({ tone: 'success', message: t('productUpdated', language) });
+    } catch (error) {
+      pushToast({ tone: 'danger', message: error.message });
+    }
+  };
+
   const handleDelete = async (id) => {
     try {
       await deleteProduct(id);
@@ -261,9 +272,12 @@ export default function ProductsPage() {
                 </div>
                 <div className="product-flags">
                   <span className={`status-pill ${Number(product.stock) < 5 ? 'danger' : 'success'}`}>{t('stock', language)} {product.stock}</span>
-                  {product.is_hot_deal && <span className="status-pill warning">{t('hotDeal', language)}</span>}
-                  {product.is_featured && <span className="status-pill primary">{t('featured', language)}</span>}
-                  {product.is_best_seller && <span className="status-pill neutral">{t('bestSeller', language)}</span>}
+                  {product.is_hot_deal && <button className="status-pill warning" style={{ cursor: 'pointer', border: 'none' }} onClick={() => toggleFlag(product.id, { is_hot_deal: false })} title="Click to remove hot deal">{t('hotDeal', language)}</button>}
+                  {product.is_featured && <button className="status-pill primary" style={{ cursor: 'pointer', border: 'none' }} onClick={() => toggleFlag(product.id, { is_featured: false })} title="Click to remove featured">{t('featured', language)}</button>}
+                  {product.is_best_seller && <button className="status-pill neutral" style={{ cursor: 'pointer', border: 'none' }} onClick={() => toggleFlag(product.id, { is_best_seller: false })} title="Click to remove best seller">{t('bestSeller', language)}</button>}
+                  {!product.is_hot_deal && <button className="ghost-button small" style={{ fontSize: '0.65rem', padding: '2px 6px' }} onClick={() => toggleFlag(product.id, { is_hot_deal: true })}>+ {t('hotDeal', language)}</button>}
+                  {!product.is_featured && <button className="ghost-button small" style={{ fontSize: '0.65rem', padding: '2px 6px' }} onClick={() => toggleFlag(product.id, { is_featured: true })}>+ {t('featured', language)}</button>}
+                  {!product.is_best_seller && <button className="ghost-button small" style={{ fontSize: '0.65rem', padding: '2px 6px' }} onClick={() => toggleFlag(product.id, { is_best_seller: true })}>+ {t('bestSeller', language)}</button>}
                 </div>
                 <div className="table-actions">
                   <button className="ghost-button" type="button" onClick={() => { setEditing({ ...product, tags: (product.tags ?? []).join(', ') }); setOpen(true); }}>{t('edit', language)}</button>
