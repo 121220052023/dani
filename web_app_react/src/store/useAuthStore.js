@@ -55,16 +55,6 @@ const useAuthStore = create((set, get) => ({
 
       const provider = _getProvider(session.user);
 
-      if (_isOAuthProvider(provider)) {
-        set({
-          user: null, role: "guest", profile: null,
-          isLoading: false, isChecking: false,
-          error: "This dashboard is for staff only. Please sign in with your staff email and password.",
-        });
-        await supabase.auth.signOut();
-        return;
-      }
-
       set({ isLoading: true });
 
       let profile = await fetchCurrentProfile(session.user);
@@ -127,6 +117,20 @@ const useAuthStore = create((set, get) => ({
     if (get().role !== "guest") {
       get().resetActivityTimer();
     }
+  },
+
+  async signInWithProvider(provider) {
+    if (!supabase) {
+      set({ error: "Supabase is not configured." });
+      return false;
+    }
+    set({ error: "", isLoading: true });
+    const { error } = await supabase.auth.signInWithOAuth({ provider });
+    if (error) {
+      set({ error: error.message, isLoading: false });
+      return false;
+    }
+    return true;
   },
 
   async signIn(email, password) {
