@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { fetchDashboardData, subscribeToTables } from '../lib/commerce';
+import { fetchDashboardData, subscribeToTables } from '../lib/api';
 import { PageHeader, SectionCard, SkeletonCards, StatCard } from '../components/ui/SectionCard';
 import useUiStore from '../store/useUiStore';
 import { t } from '../lib/i18n';
@@ -27,11 +27,9 @@ export default function DashboardPage() {
       console.error('Dashboard load error:', err);
       setError(err.message || 'Failed to load dashboard data');
       
-      // Retry logic for 503/500 errors
       if (retryCount.current < maxRetries && (err.status >= 500 || err.message?.includes('timeout'))) {
         retryCount.current++;
         const delay = Math.min(1000 * Math.pow(2, retryCount.current), 5000);
-        console.log(`Retrying in ${delay}ms (attempt ${retryCount.current})`);
         setTimeout(() => load(), delay);
         return;
       }
@@ -51,7 +49,6 @@ export default function DashboardPage() {
     
     initialLoad();
 
-    // Debounced subscription handler (500ms delay to batch rapid changes)
     let debounceTimer;
     const debouncedReload = () => {
       clearTimeout(debounceTimer);
@@ -60,7 +57,6 @@ export default function DashboardPage() {
       }, 500);
     };
 
-    // Subscribe to only essential tables (removed order_items, notifications, chat_messages to reduce load)
     const unsubscribe = subscribeToTables(
       'dashboard-live', 
       ['orders', 'products', 'profiles'],
@@ -120,14 +116,14 @@ export default function DashboardPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="name" stroke="var(--text-soft)" />
                     <YAxis stroke="var(--text-soft)" />
-                    <Tooltip
+                    <Tooltip 
                       contentStyle={{
                         background: 'var(--bg-elevated)',
                         border: '1px solid var(--border)',
                         borderRadius: '8px'
                       }}
                     />
-                    <Line
+                    <Line 
                       dataKey="revenue"
                       stroke="#2563EB"
                       strokeWidth={3}
@@ -157,8 +153,8 @@ export default function DashboardPage() {
                       ))}
                     </Pie>
                     <Tooltip 
-                      contentStyle={{ 
-                        background: 'var(--bg-elevated)', 
+                      contentStyle={{
+                        background: 'var(--bg-elevated)',
                         border: '1px solid var(--border)',
                         borderRadius: '8px'
                       }}
@@ -170,14 +166,14 @@ export default function DashboardPage() {
           </div>
 
           <div className="content-grid two-up">
-            <SectionCard title={t('orderStatuses', language)} subtitle={t('fulfillmentDistribution', language)}>
+            <SectionCard title={t('orderStatuses', language)} subtitle={t('fullfillmentDistribution', language)}>
               <div className="chart-box">
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={state.orderBars}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="name" stroke="var(--text-soft)" />
                     <YAxis stroke="var(--text-soft)" />
-                    <Tooltip
+                    <Tooltip 
                       contentStyle={{
                         background: 'var(--bg-elevated)',
                         border: '1px solid var(--border)',

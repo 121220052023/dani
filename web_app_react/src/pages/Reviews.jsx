@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { deleteProductComment, fetchProductComments, subscribeToTables } from '../lib/commerce';
+import { deleteProductComment, fetchProductComments, subscribeToTables } from '../lib/api';
 import { PageHeader, SectionCard } from '../components/ui/SectionCard';
 import useUiStore from '../store/useUiStore';
 
@@ -87,7 +87,7 @@ export default function ReviewsPage() {
 
       <SectionCard
         title="User reviews"
-        subtitle="Customer reviews and ratings with verified purchase badges"
+        subtitle="Customer reviews and ratings"
       >
         {loading ? (
           <div className="loading-state">Loading reviews...</div>
@@ -108,7 +108,7 @@ export default function ReviewsPage() {
                   <th>Rating</th>
                   <th>Title</th>
                   <th>Comment</th>
-                  <th>Verified</th>
+                  <th>Purchase Verified</th>
                   <th>Date</th>
                   <th></th>
                 </tr>
@@ -119,7 +119,6 @@ export default function ReviewsPage() {
                     <td>
                       <div className="user-cell">
                         <strong>{comment.profiles?.full_name ?? comment.profiles?.email?.split('@')[0] ?? 'Unknown user'}</strong>
-                        <small>{comment.profiles?.email ?? ''}</small>
                       </div>
                     </td>
                     <td>
@@ -141,19 +140,21 @@ export default function ReviewsPage() {
                     <td>
                       <StarRating rating={comment.rating} />
                     </td>
-                    <td className="title-cell">{comment.title || <span className="muted">—</span>}</td>
+                    <td className="title-cell">{comment.title}</td>
                     <td className="comment-cell">
-                      {comment.comment || <span className="muted">—</span>}
+                      {comment.comment || <span className="muted">No comment</span>}
                     </td>
                     <td>
-                      {comment.is_verified_purchase ? (
-                        <span className="badge badge-success">Verified</span>
-                      ) : (
-                        <span className="badge badge-neutral">—</span>
-                      )}
+                      <span className={comment.is_verified_purchase ? 'badge badge-success' : 'badge badge-neutral'}>
+                        {comment.is_verified_purchase ? 'Verified' : 'Not Verified'}
+                      </span>
                     </td>
                     <td className="date-cell">
-                      {new Date(comment.created_at).toLocaleDateString()}
+                      {new Date(comment.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
                     </td>
                     <td>
                       <button
@@ -210,16 +211,12 @@ export default function ReviewsPage() {
         .title-cell {
           font-weight: 600;
           font-size: 13px;
-          max-width: 250px;
-          white-space: normal;
-          word-break: break-word;
+          max-width: 150px;
         }
         .comment-cell {
           font-size: 12px;
           color: #374151;
-          max-width: 250px;
-          white-space: normal;
-          word-break: break-word;
+          max-width: 200px;
         }
         .comment-cell .muted {
           color: #9ca3af;
@@ -277,9 +274,10 @@ export default function ReviewsPage() {
         }
         .reviews-table td:nth-child(4),
         .reviews-table td:nth-child(5) {
-          max-width: 250px;
-          white-space: normal;
-          word-break: break-word;
+          max-width: 180px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
       `}</style>
     </div>

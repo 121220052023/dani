@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 import useUiStore from '../store/useUiStore';
@@ -7,16 +8,14 @@ import { t } from '../lib/i18n';
 export default function AuthPage() {
   const { user, signIn, error, isLoading, checkSession } = useAuthStore();
   const { language } = useUiStore();
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '', showPassword: false });
   const [localError, setLocalError] = useState('');
   const navigate = useNavigate();
 
-  // Check session on mount
   useEffect(() => {
     checkSession().catch(() => {});
   }, [checkSession]);
 
-  // Redirect if already logged in
   if (user) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -26,8 +25,12 @@ export default function AuthPage() {
     
     if (isLoading) return;
     
-    if (!form.email.trim() || !form.password.trim()) {
-      setLocalError(t('invalidCredentials', language));
+    if (!form.email.trim()) {
+      setLocalError('Please enter your email address.');
+      return;
+    }
+    if (!form.password.trim()) {
+      setLocalError('Please enter your password.');
       return;
     }
     
@@ -39,27 +42,48 @@ export default function AuthPage() {
         navigate('/dashboard', { replace: true });
       }
     } catch (err) {
-      // Error is handled in store
       console.error('Sign in error:', err);
     }
   };
 
-  const displayError = localError || error;
+  // Map raw Supabase/network errors to human-friendly messages
+  function friendlyError(raw) {
+    if (!raw) return '';
+    const msg = raw.toLowerCase();
+    if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('wrong password')) {
+      return 'Incorrect email or password. Please check your credentials and try again.';
+    }
+    if (msg.includes('email not confirmed')) {
+      return 'Your email address has not been verified. Please check your inbox.';
+    }
+    if (msg.includes('too many') || msg.includes('rate limit')) {
+      return 'Too many login attempts. Please wait a moment and try again.';
+    }
+    if (msg.includes('network') || msg.includes('fetch')) {
+      return 'Network error. Please check your internet connection.';
+    }
+    if (msg.includes('staff') || msg.includes('restricted') || msg.includes('retail')) {
+      return 'Access denied. This portal is for admin, sales, and marketing accounts only.';
+    }
+    if (msg.includes('blocked')) {
+      return 'Your account has been suspended. Please contact an administrator.';
+    }
+    return raw;
+  }
+
+  const displayError = localError || friendlyError(error);
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell" data-theme="light">
       <section className="auth-card">
         <div className="auth-header">
           <div className="auth-logo">
-            <img src="/icon.png" alt="VoltCart" className="auth-icon-img" />
-            <span>VoltDash</span>
+            <span>Volt Cart</span>
           </div>
           <span className="eyebrow">{t('staffUser', language)}</span>
           <h1>{t('signIn', language)}</h1>
           <p className="auth-description">
-            {t('admin', language)}, {t('sales', language)}, {t('marketing', language)} portal only.
-            <br />
-            Retail users use the mobile app.
+            {t('adminStaffMarketingOnly', language)}
           </p>
         </div>
         
@@ -73,7 +97,7 @@ export default function AuthPage() {
                 setForm((current) => ({ ...current, email: event.target.value }));
                 setLocalError('');
               }}
-              placeholder="admin@company.com"
+              placeholder={t('yourEmail', language)}
               disabled={isLoading}
               autoComplete="email"
             />
@@ -81,17 +105,27 @@ export default function AuthPage() {
           
           <label>
             <span>{t('password', language)}</span>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => {
-                setForm((current) => ({ ...current, password: event.target.value }));
-                setLocalError('');
-              }}
-              placeholder={t('signInToContinue', language)}
-              disabled={isLoading}
-              autoComplete="current-password"
-            />
+            <div className="password-field">
+              <input
+                type={form.showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={(event) => {
+                  setForm((current) => ({ ...current, password: event.target.value }));
+                  setLocalError('');
+                }}
+                placeholder={t('signInToContinue', language)}
+                disabled={isLoading}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="icon-button small"
+                onClick={() => setForm((current) => ({ ...current, showPassword: !current.showPassword }))}
+                aria-label={form.showPassword ? 'Hide password' : 'Show password'}
+              >
+                {form.showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </label>
           
           {displayError && (

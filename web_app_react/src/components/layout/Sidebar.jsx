@@ -2,15 +2,16 @@ import {
   BadgePercent,
   ChartColumn,
   LayoutDashboard,
-  MenuSquare,
   MessageSquareText,
   Package,
+  PanelLeft,
   Settings,
   ShieldCheck,
   ShoppingCart,
   Star,
   Users,
   X,
+  LifeBuoy
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS, getRoleLabel } from '../../lib/roles';
@@ -27,6 +28,7 @@ const iconMap = {
   'chart-column': ChartColumn,
   'badge-percent': BadgePercent,
   'shield-check': ShieldCheck,
+  'life-buoy': LifeBuoy,
   settings: Settings,
   star: Star,
 };
@@ -54,13 +56,13 @@ export default function Sidebar({ mobile }) {
     >
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <div className="icon">VD</div>
-          {!(sidebarCollapsed && !mobile) && <span>VoltDash</span>}
+          <img src="/icon.png" alt="Volt Cart" style={{ width: '28px', height: '28px', borderRadius: '6px' }} />
+          {!(sidebarCollapsed && !mobile) && <span>Volt Cart</span>}
         </div>
         <div className="sidebar-controls">
           {!mobile && (
-            <button className="icon-button" type="button" onClick={toggleSidebar} aria-label="Toggle sidebar">
-              <MenuSquare size={18} />
+            <button className="icon-button collapse-button" type="button" onClick={toggleSidebar} aria-label="Toggle sidebar">
+              <PanelLeft size={18} style={{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }} />
             </button>
           )}
           {mobile && (
@@ -89,14 +91,20 @@ export default function Sidebar({ mobile }) {
       </nav>
 
       <div className="sidebar-footer">
-        {!(sidebarCollapsed && !mobile) && (
-          <>
-            <div className="user-info">
-              <strong>{user?.full_name ?? t('staffUser', language)}</strong>
+        {!(sidebarCollapsed && !mobile) ? (
+          <div className="footer-content">
+            <div className="footer-info">
+              <div className="footer-details">
+                <strong>{user?.full_name ?? t('staffUser', language)}</strong>
+                <span className="user-email">{user?.email ?? ''}</span>
+              </div>
               <span className="role-tag">{getRoleLabel(role, language)}</span>
             </div>
-            <span className="user-email">{user?.email ?? ''}</span>
-          </>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+            <span className="role-tag">{getRoleLabel(role, language)}</span>
+          </div>
         )}
       </div>
     </aside>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchProducts, subscribeToTables } from '../lib/commerce';
+import { fetchProducts, subscribeToTables } from '../lib/api';
 import { PageHeader, SectionCard, StatCard } from '../components/ui/SectionCard';
 
 export default function MarketingPage() {

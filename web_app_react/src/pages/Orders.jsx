@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchOrders, subscribeToTables, updateOrder } from '../lib/commerce';
+import { fetchOrders, subscribeToTables, updateOrder } from '../lib/api';
 import { PageHeader, SectionCard } from '../components/ui/SectionCard';
 import useUiStore from '../store/useUiStore';
 import { t } from '../lib/i18n';
@@ -51,7 +51,7 @@ export default function OrdersPage() {
               {filteredOrders.map((order) => (
                 <tr key={order.id}>
                   <td>{order.id.slice(0, 8)}</td>
-                  <td>{order.profiles?.full_name ?? t('wholesaleUser', language)}</td>
+                  <td>{order.profiles?.full_name ?? t('unnamedUser', language)}</td>
                   <td>{order.profiles?.email ?? t('noEmail', language)}</td>
                   <td>${Number(order.total_amount).toFixed(2)}</td>
                   <td>

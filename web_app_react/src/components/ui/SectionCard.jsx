@@ -11,7 +11,7 @@ export function PageHeader({ eyebrow, title, subtitle, actions }) {
   );
 }
 
-export function SectionCard({ title, subtitle, action, children }) {
+export function SectionCard({ title, subtitle, children }) {
   return (
     <section className="section-card fade-in">
       <div className="section-head">
@@ -19,7 +19,6 @@ export function SectionCard({ title, subtitle, action, children }) {
           <h2>{title}</h2>
           {subtitle && <p className="muted-copy">{subtitle}</p>}
         </div>
-        {action}
       </div>
       {children}
     </section>

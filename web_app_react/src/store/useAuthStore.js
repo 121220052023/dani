@@ -1,7 +1,26 @@
 import { create } from "zustand";
-import { ensureProfile, fetchCurrentProfile, touchStaffPresence } from "../lib/commerce";
+import { ensureProfile, fetchCurrentProfile, touchStaffPresence } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { isStaffRole } from "../lib/roles";
+
+function _getProvider(user) {
+  if (!user) return "email";
+  const appProvider = user.app_metadata?.provider;
+  if (appProvider === "google" || appProvider === "github") return appProvider;
+  const identities = user.identities;
+  if (identities && identities.length > 0) {
+    const p = identities[0].provider;
+    if (p === "google" || p === "github") return p;
+  }
+  return "email";
+}
+
+function _isOAuthProvider(provider) {
+  return provider === "google" || provider === "github";
+}
+
+// Session timeout: 30 minutes (1800000 ms)
+const SESSION_TIMEOUT = 30 * 60 * 1000;
 
 const useAuthStore = create((set, get) => ({
   user: null,
@@ -10,66 +29,49 @@ const useAuthStore = create((set, get) => ({
   isLoading: true,
   isChecking: false,
   error: "",
+  _activityTimer: null,
+
   async checkSession() {
     if (get().isChecking) return;
 
-    console.log("[checkSession] Starting session check");
     try {
       if (!supabase) {
-        console.error("[checkSession] Supabase is not configured");
-        set({
-          user: null,
-          role: "guest",
-          profile: null,
-          isLoading: false,
-          error: "Supabase is not configured.",
-        });
+        set({ user: null, role: "guest", profile: null, isLoading: false, error: "Supabase is not configured." });
         return;
       }
 
       set({ isChecking: true, error: "" });
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      console.log("[checkSession] Session retrieved:", {
-        hasSession: !!session,
-        hasUser: !!session?.user,
-        userId: session?.user?.id,
-      });
+      const { data: { session }, error } = await supabase.auth.getSession();
 
       if (error) {
-        console.error("[checkSession] Error getting session:", error);
         set({ isLoading: false, isChecking: false, error: error.message });
         return;
       }
 
       if (!session?.user) {
-        console.log("[checkSession] No session found, setting user to guest");
-        set({
-          user: null,
-          role: "guest",
-          profile: null,
-          isLoading: false,
-          isChecking: false,
-          error: "",
-        });
+        set({ user: null, role: "guest", profile: null, isLoading: false, isChecking: false, error: "" });
         return;
       }
 
-      // Only set loading if we actually have a session to verify
+      const provider = _getProvider(session.user);
+
+      if (_isOAuthProvider(provider)) {
+        set({
+          user: null, role: "guest", profile: null,
+          isLoading: false, isChecking: false,
+          error: "This dashboard is for staff only. Please sign in with your staff email and password.",
+        });
+        await supabase.auth.signOut();
+        return;
+      }
+
       set({ isLoading: true });
 
-      // Try fetching existing profile first to avoid unnecessary writes
       let profile = await fetchCurrentProfile(session.user);
 
-      // Repair a missing profile without granting elevated access by default.
       if (!profile) {
         const metadataRole = session.user.user_metadata?.role;
-        const bootstrapRole = isStaffRole(metadataRole)
-          ? metadataRole
-          : "retail";
+        const bootstrapRole = isStaffRole(metadataRole) ? metadataRole : "retail";
         profile = await ensureProfile(bootstrapRole, session.user);
       }
 
@@ -87,10 +89,8 @@ const useAuthStore = create((set, get) => ({
         user: {
           id: session.user.id,
           email: session.user.email,
-          full_name:
-            profile?.full_name ??
-            session.user.user_metadata?.full_name ??
-            "Staff user",
+          full_name: profile?.full_name ?? session.user.user_metadata?.full_name ?? "Staff user",
+          provider,
         },
         role: profile?.role ?? "guest",
         profile,
@@ -98,62 +98,68 @@ const useAuthStore = create((set, get) => ({
         isChecking: false,
         error: nextError,
       });
+
+      // Start activity timer after successful session check
+      get().resetActivityTimer();
     } catch (error) {
       set({
-        user: null,
-        role: "guest",
-        profile: null,
-        isLoading: false,
-        isChecking: false,
+        user: null, role: "guest", profile: null,
+        isLoading: false, isChecking: false,
         error: error?.message ?? "Failed to initialize the staff session.",
       });
-      return false;
     }
   },
+
+  resetActivityTimer() {
+    const { _activityTimer } = get();
+    if (_activityTimer) clearTimeout(_activityTimer);
+    
+    const timer = setTimeout(() => {
+      get().signOut();
+      window.location.href = "/login";
+    }, SESSION_TIMEOUT);
+    
+    set({ _activityTimer: timer });
+  },
+
+  trackActivity() {
+    // Only reset timer if user is logged in
+    if (get().role !== "guest") {
+      get().resetActivityTimer();
+    }
+  },
+
   async signIn(email, password) {
     if (!supabase) {
       set({ error: "Supabase is not configured." });
       return false;
     }
-
     set({ error: "", isLoading: true });
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       set({ error: error.message, isLoading: false });
       return false;
     }
-    // No need to call checkSession manually as onAuthStateChange will trigger it
     return true;
   },
+
   async signOut() {
-    // Optimistic UI update: instantly clear state
-    set({
-      user: null,
-      role: "guest",
-      profile: null,
-      error: "",
-      isLoading: false,
-    });
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
+    const { _activityTimer } = get();
+    if (_activityTimer) clearTimeout(_activityTimer);
+    set({ user: null, role: "guest", profile: null, error: "", isLoading: false, _activityTimer: null });
+    if (supabase) await supabase.auth.signOut();
   },
 }));
 
 if (supabase) {
-  // Check session on initial load
   useAuthStore.getState().checkSession().catch(() => {});
 
   supabase.auth.onAuthStateChange((event) => {
-    // Avoid re-running session check on sign out to prevent flashes/delays
     if (["SIGNED_IN", "USER_UPDATED", "TOKEN_REFRESHED"].includes(event)) {
-      useAuthStore
-        .getState()
-        .checkSession()
-        .catch(() => {});
+      useAuthStore.getState().checkSession().catch(() => {});
+    }
+    if (event === "SIGNED_OUT") {
+      useAuthStore.setState({ user: null, role: "guest", profile: null, error: "", isLoading: false });
     }
   });
 }

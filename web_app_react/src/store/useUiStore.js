@@ -2,9 +2,9 @@ import { create } from 'zustand';
 
 const getStoredTheme = () => {
   if (typeof window === 'undefined') {
-    return 'light';
+    return 'dark';
   }
-  return window.localStorage.getItem('dashboard-theme') ?? 'light';
+  return window.localStorage.getItem('dashboard-theme') ?? 'dark';
 };
 
 const getStoredLanguage = () => {
@@ -24,17 +24,9 @@ const useUiStore = create((set) => ({
   setTheme(theme) {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('dashboard-theme', theme);
+      document.documentElement.dataset.theme = theme;
     }
     set({ theme });
-  },
-  toggleTheme() {
-    set((state) => {
-      const theme = state.theme === 'dark' ? 'light' : 'dark';
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('dashboard-theme', theme);
-      }
-      return { theme };
-    });
   },
   setLanguage(language) {
     if (typeof window !== 'undefined') {

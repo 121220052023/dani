@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchUsers, subscribeToTables } from '../lib/commerce';
+import { fetchUsers, subscribeToTables } from '../lib/api';
 import { PageHeader, SectionCard } from '../components/ui/SectionCard';
 
 const ROLE_INFO = {
@@ -33,8 +33,6 @@ export default function RolesPage() {
     role,
     users: users.filter((user) => user.role === role),
   }));
-
-  const totalAdmins = users.filter((u) => u.role === 'admin').length;
 
   return (
     <div className="page-grid">

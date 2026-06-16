@@ -4,12 +4,16 @@ export const ROLE_LABELS = {
   admin: 'Admin',
   sales: 'Sales',
   marketing: 'Marketing',
+  retail: 'Retail',
+  wholesale: 'Wholesale',
 };
 
 export const ROLE_LABELS_AR = {
   admin: 'مدير',
   sales: 'مبيعات',
   marketing: 'تسويق',
+  retail: 'تجزئة',
+  wholesale: 'جملة',
 };
 
 export function getRoleLabel(role, language = 'en') {
@@ -26,6 +30,7 @@ export const NAV_ITEMS = [
   { to: '/reviews', label: 'reviews', icon: 'star', roles: ['admin'] },
   { to: '/orders', label: 'orders', icon: 'shopping-cart', roles: ['admin', 'sales'] },
   { to: '/chat', label: 'chat', icon: 'messages-square', roles: ['admin', 'sales'] },
+  { to: '/support-summary', label: 'support summary', icon: 'life-buoy', roles: ['admin'] },
   { to: '/analytics', label: 'analytics', icon: 'chart-column', roles: ['admin'] },
   { to: '/marketing', label: 'marketing', icon: 'badge-percent', roles: ['admin', 'marketing'] },
   { to: '/roles', label: 'roles', icon: 'shield-check', roles: ['admin'] },
