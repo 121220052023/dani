@@ -79,6 +79,7 @@ export default function AuthPage() {
         <div className="auth-header">
           <div className="auth-logo">
             <img src="/icon.png" alt="Volt Cart" style={{ height: '36px', width: 'auto', borderRadius: '8px' }} />
+            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }}>Volt Cart</span>
           </div>
           <span className="eyebrow">{t('staffUser', language)}</span>
           <h1>{t('signIn', language)}</h1>

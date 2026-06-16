@@ -627,7 +627,7 @@ textarea { min-height: 80px; resize: vertical; }
   padding: 6px 10px; font-size: 0.8rem; min-width: 120px;
 }
 
-.table-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.table-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 
 /* ═══════════════════════════════════════════
    STATUS PILLS
