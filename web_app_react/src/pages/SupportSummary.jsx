@@ -442,13 +442,11 @@ export default function SupportSummary() {
                     <td>
                       <div
                         style={{
-                          maxWidth: "300px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          maxWidth: "400px",
                           fontSize: "0.85rem",
+                          lineHeight: "1.5",
+                          wordBreak: "break-word",
                         }}
-                        title={s.issue_description}
                       >
                         {s.issue_description}
                       </div>

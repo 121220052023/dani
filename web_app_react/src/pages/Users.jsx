@@ -13,6 +13,7 @@ import {
 import { formatFullDateTime } from "../lib/api/client";
 import { PageHeader, SectionCard } from "../components/ui/SectionCard";
 import useUiStore from "../store/useUiStore";
+import useAuthStore from "../store/useAuthStore";
 import { STAFF_ROLES, getRoleLabel } from "../lib/roles";
 import { t } from "../lib/i18n";
 import { Search, Key, Eye, EyeOff, UserPlus, RotateCcw, Trash2 } from "lucide-react";
@@ -79,6 +80,7 @@ export default function UsersPage() {
   const [deletedUsers, setDeletedUsers] = useState([]);
   const [showDeletedUsers, setShowDeletedUsers] = useState(false);
   const { searchQuery, setSearchQuery, pushToast, language } = useUiStore();
+  const { user: currentUser } = useAuthStore();
 
   useEffect(() => {
     let isMounted = true;
@@ -325,9 +327,15 @@ export default function UsersPage() {
                         <td>
                           <div className="table-actions">
                             <span className={`status-pill ${user.is_blocked ? "danger" : "success"}`}>{user.status}</span>
-                            <button className="ghost-button" type="button" onClick={() => save(user.id, { is_blocked: !user.is_blocked })}>
-                              {user.is_blocked ? t('block', language) : t('suspend', language)}
-                            </button>
+                            {user.id === currentUser?.id ? (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', fontStyle: 'italic' }}>{t('cannotSuspendSelf', language)}</span>
+                            ) : user.role === 'admin' ? (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', fontStyle: 'italic' }}>{t('cannotSuspendAdmin', language)}</span>
+                            ) : (
+                              <button className="ghost-button" type="button" onClick={() => save(user.id, { is_blocked: !user.is_blocked })}>
+                                {user.is_blocked ? t('block', language) : t('suspend', language)}
+                              </button>
+                            )}
                             <button className="danger-button" type="button" onClick={() => handleDeleteUser(user.id)}>{t('delete', language)}</button>
                           </div>
                         </td>

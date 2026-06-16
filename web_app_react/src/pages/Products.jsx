@@ -104,6 +104,10 @@ export default function ProductsPage() {
       pushToast({ tone: 'danger', message: t('nameRequired', language) });
       return;
     }
+    if (!/^\p{L}/u.test(editing.name.trim())) {
+      pushToast({ tone: 'danger', message: t('nameMustStartWithLetter', language) });
+      return;
+    }
     if (!editing.brand || !editing.brand.trim()) {
       pushToast({ tone: 'danger', message: t('brandRequired', language) });
       return;
