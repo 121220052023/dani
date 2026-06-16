@@ -1,0 +1,440 @@
+import { hasSupabaseEnv, supabase } from './supabase';
+
+const ROLE_LABELS = {
+  admin: 'Admin',
+  sales: 'Sales',
+  marketing: 'Marketing',
+};
+
+function requireClient() {
+  if (!hasSupabaseEnv || !supabase) {
+    throw new Error('Supabase environment variables are missing.');
+  }
+  return supabase;
+}
+
+function monthKey(dateValue) {
+  const date = new Date(dateValue);
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+
+function monthLabel(dateValue) {
+  return new Date(dateValue).toLocaleString('en-US', { month: 'short' });
+}
+
+function activityStatus(timestamp) {
+  if (!timestamp) return 'Offline';
+  const minutes = (Date.now() - new Date(timestamp).getTime()) / 60000;
+  return minutes <= 30 ? 'Active' : 'Offline';
+}
+
+export async function ensureProfile(role = 'sales', existingUser = null) {
+  const client = requireClient();
+  let user = existingUser;
+  
+  if (!user) {
+    const { data, error: authError } = await client.auth.getUser();
+    if (authError) throw authError;
+    user = data.user;
+  }
+  
+  if (!user) return null;
+
+  const { error } = await client.rpc('ensure_profile', {
+    p_full_name: null,
+    p_role: role,
+    p_language: 'en',
+  });
+
+  if (!error) {
+    return fetchCurrentProfile(user);
+  }
+
+  if (error.code !== 'PGRST202' && !error.message?.includes('Could not find the function')) {
+    throw error;
+  }
+
+  const profilePayload = {
+    id: user.id,
+    email: user.email ?? '',
+    full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? 'Staff user',
+    role,
+    preferred_language: 'en',
+  };
+
+  const existingProfile = await client
+    .from('profiles')
+    .select('id, email, full_name, role, is_blocked, preferred_language')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (existingProfile.error) {
+    throw existingProfile.error;
+  }
+
+  if (existingProfile.data) {
+    const { data, error: updateError } = await client
+      .from('profiles')
+      .update({
+        email: profilePayload.email,
+        full_name: existingProfile.data.full_name ?? profilePayload.full_name,
+        preferred_language: existingProfile.data.preferred_language ?? 'en',
+      })
+      .eq('id', user.id)
+      .select('id, email, full_name, role, is_blocked, preferred_language')
+      .single();
+    if (updateError) throw updateError;
+    return data;
+  }
+
+  const { data, error: insertError } = await client
+    .from('profiles')
+    .insert(profilePayload)
+    .select('id, email, full_name, role, is_blocked, preferred_language')
+    .single();
+  if (insertError) throw insertError;
+  return data;
+}
+
+export async function fetchCurrentProfile(existingUser = null) {
+  const client = requireClient();
+  let user = existingUser;
+
+  if (!user) {
+    const { data, error: authError } = await client.auth.getUser();
+    if (authError) throw authError;
+    user = data.user;
+  }
+  
+  if (!user) return null;
+
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, email, full_name, role, is_blocked, preferred_language')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchDashboardData() {
+  const client = requireClient();
+  const [ordersRes, orderItemsRes, productsRes, profilesRes, notificationsRes, messagesRes] = await Promise.all([
+    client.from('orders').select('id, total_amount, status, created_at, user_id'),
+    client.from('order_items').select('quantity, order_id, product_id, products(name, category)'),
+    client.from('products').select('id, name, stock, is_best_seller, is_featured, is_hot_deal, category, price, created_at'),
+    client.from('profiles').select('id, email, full_name, role, created_at'),
+    client.from('notifications').select('id, title, body, type, created_at').order('created_at', { ascending: false }).limit(8),
+    client.from('chat_messages').select('id, sender_type, message, created_at, sender:sender_id(full_name, email)').order('created_at', { ascending: false }).limit(12),
+  ]);
+
+  for (const result of [ordersRes, orderItemsRes, productsRes, profilesRes, notificationsRes, messagesRes]) {
+    if (result.error) throw result.error;
+  }
+
+  const orders = ordersRes.data ?? [];
+  const orderItems = orderItemsRes.data ?? [];
+  const products = productsRes.data ?? [];
+  const profiles = profilesRes.data ?? [];
+  // eslint-disable-next-line no-unused-vars
+  const notifications = notificationsRes.data ?? [];
+  const messages = messagesRes.data ?? [];
+
+  const today = new Date();
+  const months = Array.from({ length: 6 }).map((_, index) => {
+    const date = new Date(today.getFullYear(), today.getMonth() - (5 - index), 1);
+    return {
+      key: monthKey(date),
+      name: monthLabel(date),
+    };
+  });
+
+  const revenueSeries = months.map((month) => {
+    const monthlyOrders = orders.filter((order) => monthKey(order.created_at) === month.key);
+    return {
+      name: month.name,
+      revenue: monthlyOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0),
+      orders: monthlyOrders.length,
+    };
+  });
+
+  const bestSellerTotals = orderItems.reduce((accumulator, item) => {
+    const name = item.products?.name ?? 'Unknown product';
+    accumulator[name] = (accumulator[name] ?? 0) + Number(item.quantity ?? 0);
+    return accumulator;
+  }, {});
+
+  const bestSellers = Object.entries(bestSellerTotals)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 4)
+    .map(([name, value]) => ({ name, value }));
+
+  const orderStatuses = orders.reduce((accumulator, order) => {
+    accumulator[order.status] = (accumulator[order.status] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  const orderBars = [
+    { name: 'Preparing', value: orderStatuses.Preparing ?? 0 },
+    { name: 'Shipped', value: orderStatuses.Shipped ?? 0 },
+    { name: 'On the way', value: orderStatuses['On the way'] ?? 0 },
+    { name: 'Delivered', value: orderStatuses.Delivered ?? 0 },
+  ];
+
+  const activityFeed = [
+    ...orders.slice(0, 2).map((order) => ({
+      id: `order-${order.id}`,
+      actor: profiles.find((p) => p.id === order.user_id)?.full_name ?? 'Customer',
+      action: `placed order ${order.id}`,
+      created_at: order.created_at,
+    })),
+    ...messages.slice(0, 2).map((message) => ({
+      id: `message-${message.id}`,
+      actor: message.sender?.full_name ?? message.sender_type,
+      action: `sent message in chat`,
+      created_at: message.created_at,
+    })),
+  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const employeeTracking = profiles
+    .filter((profile) => ['admin', 'sales', 'marketing'].includes(profile.role))
+    .map((profile) => ({
+      id: profile.id,
+      name: profile.full_name ?? profile.email,
+      email: profile.email,
+      role: ROLE_LABELS[profile.role] ?? profile.role,
+      status: activityStatus(profile.created_at),
+      screenTime: '4h 23m', // Mock screen time
+    }));
+
+  return {
+    summaryCards: [
+      { label: 'Revenue', value: orders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0), meta: '+20.1% from last month', tone: 'success' },
+      { label: 'Orders', value: orders.length, meta: '+180.1% from last month', tone: 'primary' },
+      { label: 'Users', value: profiles.length, meta: '+19% from last month', tone: 'warning' },
+      { label: 'Products', value: products.length, meta: '+201 since last hour', tone: 'danger' },
+    ],
+    revenueSeries,
+    bestSellers,
+    orderBars,
+    activityFeed,
+    employeeTracking,
+  };
+  }
+
+export async function fetchProducts() {
+  const client = requireClient();
+  const { data, error } = await client.from('products').select('*').order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveProduct(product) {
+  const client = requireClient();
+  const payload = {
+    ...product,
+    slug: product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  };
+
+  if (product.id) {
+    const { error } = await client.from('products').update(payload).eq('id', product.id);
+    if (error) throw error;
+  } else {
+    const { error } = await client.from('products').insert(payload);
+    if (error) throw error;
+  }
+}
+
+export async function deleteProduct(id) {
+  const client = requireClient();
+  const { error } = await client.from('products').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchOrders() {
+  const client = requireClient();
+  const { data, error } = await client.from('orders').select('*, profiles(full_name, email)').order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function updateOrder(id, patch) {
+  const client = requireClient();
+  const { data, error } = await client.from('orders').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchUsers() {
+  const client = requireClient();
+  const [profilesRes, ordersRes] = await Promise.all([
+    client.from('profiles').select('*'),
+    client.from('orders').select('user_id, total_amount'),
+  ]);
+  if (profilesRes.error) throw profilesRes.error;
+  
+  const ordersByUser = (ordersRes.data ?? []).reduce((acc, order) => {
+    const userId = order.user_id;
+    if (!acc[userId]) {
+      acc[userId] = { count: 0, total: 0 };
+    }
+    acc[userId].count += 1;
+    acc[userId].total += Number(order.total_amount ?? 0);
+    return acc;
+  }, {});
+  
+  return (profilesRes.data ?? []).map((user) => ({
+    ...user,
+    orders: ordersByUser[user.id]?.count ?? 0,
+    totalSpend: ordersByUser[user.id]?.total ?? 0,
+    status: user.is_blocked ? 'Blocked' : 'Active',
+  }));
+}
+
+export async function updateUser(id, patch) {
+  const client = requireClient();
+  const { data, error } = await client.from('profiles').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchWholesaleCodes() {
+  const client = requireClient();
+  const { data, error } = await client
+    .from('wholesale_codes')
+    .select('id, code, is_used, redeemed_at, created_at, creator:created_by(full_name, email), redeemer:redeemed_by(full_name, email)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function generateWholesaleCode() {
+  const client = requireClient();
+  const { data, error } = await client.rpc('generate_wholesale_code');
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchChatThreads() {
+  const client = requireClient();
+  const { data, error } = await client.from('chat_threads').select('*, user_id:profiles(full_name, email)').order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchMessages(threadId) {
+  const client = requireClient();
+  const { data, error } = await client.from('chat_messages').select('*, sender:sender_id(full_name, email)').eq('thread_id', threadId).order('created_at');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function sendSalesMessage(threadId, message) {
+  const client = requireClient();
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  const { error } = await client.from('chat_messages').insert({
+    thread_id: threadId,
+    sender_id: user?.id ?? null,
+    sender_type: 'sales',
+    message,
+  });
+  if (error) throw error;
+
+  await client
+    .from('chat_threads')
+    .update({ assigned_sales_id: user?.id ?? null, last_sales_reply_at: new Date().toISOString() })
+    .eq('id', threadId);
+}
+
+export async function fetchNotifications() {
+  const client = requireClient();
+  const { data, error } = await client.from('notifications').select('*').order('created_at', { ascending: false }).limit(10);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function markNotificationRead(id) {
+  const client = requireClient();
+  const { error } = await client.from('notifications').update({ is_read: true }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchAnalyticsData() {
+  const [dashboard, orders, products] = await Promise.all([
+    fetchDashboardData(),
+    fetchOrders(),
+    fetchProducts(),
+  ]);
+
+  const ordersByDay = Array.from({ length: 7 }).map((_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    const key = date.toISOString().slice(0, 10);
+    return {
+      day: date.toLocaleString('en-US', { weekday: 'short' }),
+      orders: orders.filter((order) => order.created_at.slice(0, 10) === key).length,
+    };
+  });
+
+  const categoryMix = products.reduce((accumulator, product) => {
+    accumulator[product.category] = (accumulator[product.category] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  return {
+    ...dashboard,
+    ordersByDay,
+    categoryMix: Object.entries(categoryMix).map(([name, value]) => ({ name, value })),
+  };
+}
+
+export async function updateCurrentProfile(patch) {
+  const client = requireClient();
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  const { data, error } = await client.from('profiles').update(patch).eq('id', user?.id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createUser(email, password, fullName, role) {
+  const client = requireClient();
+  const { data: session } = await client.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(`${client.supabaseUrl}/functions/v1/create-user`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password, full_name: fullName, role }),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to create user');
+  }
+  return result;
+}
+
+export function subscribeToTables(channelName, tables, onChange) {
+  if (!supabase) {
+    return () => {};
+  }
+
+  const channel = supabase.channel(channelName);
+  tables.forEach((table) => {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table }, onChange);
+  });
+  channel.subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}

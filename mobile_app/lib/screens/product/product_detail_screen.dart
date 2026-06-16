@@ -1,0 +1,701 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/providers/app_state_provider.dart';
+import '../../models/product.dart';
+import '../../widgets/network_product_image.dart';
+
+class ProductDetailScreen extends StatefulWidget {
+  const ProductDetailScreen({
+    super.key,
+    required this.product,
+    required this.onRequireAuth,
+  });
+
+  final Product product;
+  final VoidCallback onRequireAuth;
+
+  @override
+  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+}
+
+class _ProductDetailScreenState extends State<ProductDetailScreen> {
+  int _quantity = 1;
+  int _userRating = 0;
+  final _reviewTitleController = TextEditingController();
+  final _reviewCommentController = TextEditingController();
+  bool _isSubmittingReview = false;
+  bool _reviewsLoading = true;
+  String? _reviewsError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadReviewsData();
+    });
+  }
+
+  Future<void> _loadReviewsData() async {
+    setState(() {
+      _reviewsLoading = true;
+      _reviewsError = null;
+    });
+
+    try {
+      final appState = context.read<AppStateProvider>();
+      await Future.wait([
+        appState.loadReviews(widget.product.id),
+        appState.loadProductComments(widget.product.id),
+        appState.loadProductRating(widget.product.id),
+      ]);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _reviewsError = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _reviewsLoading = false);
+        context.read<AppStateProvider>().recordProductView(widget.product);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _reviewTitleController.dispose();
+    _reviewCommentController.dispose();
+    super.dispose();
+  }
+
+  void _increment() {
+    if (_quantity < widget.product.stock) {
+      setState(() => _quantity++);
+    }
+  }
+
+  void _decrement() {
+    if (_quantity > 1) {
+      setState(() => _quantity--);
+    }
+  }
+
+  Future<void> _addToCart() async {
+    final appState = context.read<AppStateProvider>();
+    if (appState.isGuest) {
+      widget.onRequireAuth();
+      return;
+    }
+    await appState.addToCart(widget.product, quantity: _quantity);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            appState.text(en: 'Added to cart', ar: 'تمت الإضافة إلى السلة'),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final appState = context.read<AppStateProvider>();
+    if (appState.isGuest) {
+      widget.onRequireAuth();
+      return;
+    }
+    await appState.toggleFavorite(widget.product);
+  }
+
+  Future<void> _submitReview() async {
+    final appState = context.read<AppStateProvider>();
+    if (appState.isGuest) {
+      widget.onRequireAuth();
+      return;
+    }
+
+    if (_userRating == 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a rating')));
+      return;
+    }
+
+    if (_reviewTitleController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a title')));
+      return;
+    }
+
+    setState(() => _isSubmittingReview = true);
+    try {
+      await appState.submitProductComment(
+        productId: widget.product.id,
+        rating: _userRating,
+        title: _reviewTitleController.text,
+        comment: _reviewCommentController.text,
+      );
+
+      if (mounted) {
+        _reviewTitleController.clear();
+        _reviewCommentController.clear();
+        setState(() => _userRating = 0);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Review submitted successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmittingReview = false);
+      }
+    }
+  }
+
+  void _showReviewModal() {
+    final appState = context.read<AppStateProvider>();
+    if (appState.isGuest) {
+      widget.onRequireAuth();
+      return;
+    }
+
+    _userRating = 0;
+    _reviewTitleController.clear();
+    _reviewCommentController.clear();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Write a Review',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Text('Rating'),
+              const SizedBox(height: 8),
+              Row(
+                children: List.generate(
+                  5,
+                  (index) => GestureDetector(
+                    onTap: () => setModalState(() => _userRating = index + 1),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(
+                        index < _userRating ? Icons.star : Icons.star_border,
+                        color: Colors.amber,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _reviewTitleController,
+                decoration: InputDecoration(
+                  labelText: 'Review Title',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reviewCommentController,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: 'Your Review',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.grey,
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _isSubmittingReview ? null : _submitReview,
+                      child: Text(
+                        _isSubmittingReview ? 'Submitting...' : 'Submit Review',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<AppStateProvider>();
+    final theme = Theme.of(context);
+    final product = widget.product;
+    final isFavorite = appState.favoriteIds.contains(product.id);
+    final reviews = appState.getProductComments(product.id);
+
+    // Check if product data is empty or invalid
+    if (product.id == null || (product.name ?? '').isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(appState.text(en: 'Product Details', ar: 'تفاصيل المنتج')),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                appState.text(en: 'Product not found', ar: 'المنتج غير موجود'),
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final basePrice = product.discountedPrice;
+    final wholesalePrice = appState.isWholesale ? basePrice * 0.85 : basePrice;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          (product.name ?? '').isEmpty
+              ? appState.text(en: 'Product Details', ar: 'تفاصيل المنتج')
+              : product.name ?? '',
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+            color: isFavorite ? Colors.red : null,
+            onPressed: _toggleFavorite,
+          ),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 120),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: AspectRatio(
+                aspectRatio: 1.2,
+                child: (product.imageUrl ?? '').isEmpty
+                    ? Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.image_not_supported,
+                                size: 64,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                appState.text(
+                                  en: 'No Image Available',
+                                  ar: 'لا تتوفر صورة',
+                                ),
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : NetworkProductImage(
+                        imageUrl: product.imageUrl,
+                        borderRadius: BorderRadius.zero,
+                      ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Chip(
+                        label: Text(product.brand),
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                      ),
+                      if (product.stock > 0)
+                        Text(
+                          appState.text(
+                            en: 'Stock: ${product.stock}',
+                            ar: 'المخزون: ${product.stock}',
+                          ),
+                          style: TextStyle(
+                            color: product.stock < 5
+                                ? Colors.red
+                                : Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      else
+                        Text(
+                          appState.text(
+                            en: 'Out of Stock',
+                            ar: 'نفد من المخزون',
+                          ),
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    (product.name ?? '').isEmpty
+                        ? appState.text(
+                            en: 'Product Name Unavailable',
+                            ar: 'اسم المنتج غير متاح',
+                          )
+                        : product.name ?? '',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      Text(
+                        '\$${wholesalePrice.toStringAsFixed(2)}',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (appState.isWholesale)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            appState.text(
+                              en: '15% Wholesale Discount',
+                              ar: 'خصم الجملة 15٪',
+                            ),
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontSize: 12,
+                            ),
+                          ),
+                        )
+                      else if (product.discountPercent > 0)
+                        Text(
+                          '\$${product.price.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            decoration: TextDecoration.lineThrough,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    appState.text(en: 'Description', ar: 'الوصف'),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    (product.description ?? '').isEmpty
+                        ? appState.text(
+                            en: 'No description available.',
+                            ar: 'لا يوجد وصف متاح.',
+                          )
+                        : product.description ?? '',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    appState.text(en: 'Tags', ar: 'العلامات'),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (product.tags.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: product.tags
+                          .map((tag) => Chip(label: Text(tag)))
+                          .toList(),
+                    )
+                  else
+                    Text(
+                      appState.text(
+                        en: 'No tags available.',
+                        ar: 'لا توجد علامات متاحة.',
+                      ),
+                      style: TextStyle(color: Colors.grey.shade500),
+                    ),
+                  const SizedBox(height: 24),
+                  Text(
+                    appState.text(en: 'Reviews', ar: 'التقييمات'),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_reviewsLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_reviewsError != null)
+                    Column(
+                      children: [
+                        Text(
+                          appState.text(en: 'Failed to load reviews', ar: 'فشل تحميل التقييمات'),
+                          style: TextStyle(color: Colors.red.shade600),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _loadReviewsData,
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: Text(appState.text(en: 'Retry', ar: 'إعادة المحاولة')),
+                        ),
+                      ],
+                    )
+                  else if (reviews.isNotEmpty)
+                    Text(
+                      '${reviews.length} ${appState.text(en: 'reviews', ar: 'مراجعات')}',
+                      style: TextStyle(color: Colors.grey.shade500),
+                    )
+                  else
+                    Text(
+                      appState.text(
+                        en: 'No reviews yet. Be the first to review!',
+                        ar: 'لا توجد تقييمات بعد. كن أول من يُقيّم!',
+                      ),
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _showReviewModal,
+                      icon: const Icon(Icons.rate_review, size: 20),
+                      label: Text(
+                        appState.text(en: 'Add Your Review', ar: 'أضف مراجعتك'),
+                      ),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (!_reviewsLoading && _reviewsError == null && reviews.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  appState.text(
+                    en: 'No reviews yet.',
+                    ar: 'لا توجد تقييمات بعد.',
+                  ),
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              )
+            else if (!_reviewsLoading && _reviewsError == null)
+              ...reviews.map(
+                (review) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    elevation: 0,
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                review.reviewerName ?? 'Anonymous',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Row(
+                                children: List.generate(
+                                  5,
+                                  (index) => Icon(
+                                    index < review.rating
+                                        ? Icons.star
+                                        : Icons.star_border,
+                                    size: 16,
+                                    color: Colors.amber,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (review.title.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              review.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                          if (review.comment != null && review.comment!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(review.comment!),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      ),
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Row(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove),
+                          onPressed: _decrement,
+                          color: _quantity > 1 ? null : Colors.grey,
+                        ),
+                        Text(
+                          '$_quantity',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: _increment,
+                          color: _quantity < product.stock ? null : Colors.grey,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: product.stock > 0 ? _addToCart : null,
+                      icon: const Icon(Icons.shopping_cart),
+                      label: Text(
+                        appState.text(en: 'Add to Cart', ar: 'أضف إلى السلة'),
+                      ),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 56),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ),
+        ),
+      ),
+    );
+  }
+}

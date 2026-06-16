@@ -1,0 +1,8 @@
+{
+  "build": {
+    "output": "dist"
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
