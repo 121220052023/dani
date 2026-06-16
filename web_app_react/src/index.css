@@ -1133,26 +1133,6 @@ textarea { min-height: 80px; resize: vertical; }
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-.auth-divider {
-  display: flex; align-items: center; gap: 16px;
-  color: var(--text-faint); font-size: 0.8rem;
-}
-.auth-divider::before,
-.auth-divider::after {
-  content: ''; flex: 1; height: 1px; background: var(--border);
-}
-.auth-oauth {
-  display: flex; flex-direction: column; gap: 10px;
-}
-.oauth-button {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 12px 16px; border-radius: var(--radius-md);
-  border: 1px solid var(--border); background: var(--bg-elevated);
-  font-size: 0.9rem; font-weight: 500; cursor: pointer;
-  transition: all var(--transition); color: var(--text);
-}
-.oauth-button:hover { background: var(--bg-muted); border-color: var(--text-faint); }
-.oauth-button:disabled { opacity: 0.6; cursor: not-allowed; }
 .auth-footer {
   text-align: center;
   padding-top: 20px;

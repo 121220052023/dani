@@ -119,20 +119,6 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
-  async signInWithProvider(provider) {
-    if (!supabase) {
-      set({ error: "Supabase is not configured." });
-      return false;
-    }
-    set({ error: "", isLoading: true });
-    const { error } = await supabase.auth.signInWithOAuth({ provider });
-    if (error) {
-      set({ error: error.message, isLoading: false });
-      return false;
-    }
-    return true;
-  },
-
   async signIn(email, password) {
     if (!supabase) {
       set({ error: "Supabase is not configured." });
